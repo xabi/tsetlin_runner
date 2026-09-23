@@ -6,6 +6,8 @@ defmodule TsetlinRunner do
 
   import Bitwise
 
+  alias TsetlinRunner.Native
+
   @doc """
   Packs a list of booleans into the little-endian, LSB-first, 64-bit-chunk
   layout Tsetlin Machine models expect (matching `Tsetlin.jl`'s `TMInput`
@@ -30,5 +32,23 @@ defmodule TsetlinRunner do
       end)
 
     <<value::unsigned-little-64>>
+  end
+
+  @doc """
+  Loads a compiled Tsetlin Machine model (a `.tmbin` file produced by the
+  Julia `tsetlin_world` project's exporter) from `path`.
+  """
+  @spec load(String.t()) :: {:ok, reference()} | {:error, :invalid_format | :io_error}
+  def load(path) when is_binary(path) do
+    Native.load_model_nif(path)
+  end
+
+  @doc """
+  Runs inference for `packed_bits` (see `pack_bits/1`) against a `model`
+  returned by `load/1`.
+  """
+  @spec predict(reference(), binary()) :: {:ok, integer()} | {:error, :bit_length_mismatch}
+  def predict(model, packed_bits) when is_binary(packed_bits) do
+    Native.predict_nif(model, packed_bits)
   end
 end

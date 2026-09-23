@@ -23,10 +23,83 @@ defmodule TsetlinRunnerTest do
     end
   end
 
-  describe "TsetlinRunner.Native (raw NIF bindings)" do
-    test "load_model_nif/1 returns an io_error tuple for a missing file" do
-      assert TsetlinRunner.Native.load_model_nif("/nonexistent/path.tmbin") ==
-               {:error, :io_error}
+  describe "load/1 and predict/2 (end-to-end against a tiny fixture model)" do
+    # Mirrors native/tsetlin_nif/src/format.rs's tiny_general_model_bytes():
+    # 2-bit input, 2 classes, lf=2, one clause per polarity per class.
+    # Class 1 requires both input bits true; class 2 requires both false.
+    defp tiny_model_bytes do
+      <<
+        "TSTM",
+        1::little-32,
+        1::8,
+        2::little-32,
+        1::little-32,
+        2::little-32,
+        1::little-32,
+        2::little-64,
+        1::little-64,
+        2::little-64,
+        3::little-64,
+        0::little-64,
+        0::little-64,
+        0::little-64,
+        0::little-64,
+        3::little-64,
+        0::little-64,
+        0::little-64
+      >>
+    end
+
+    defp with_tiny_model(fun) do
+      path = Path.join(System.tmp_dir!(), "tsetlin_runner_test_#{System.unique_integer([:positive])}.tmbin")
+      File.write!(path, tiny_model_bytes())
+
+      try do
+        {:ok, model} = TsetlinRunner.load(path)
+        fun.(model)
+      after
+        File.rm(path)
+      end
+    end
+
+    test "load/1 returns an io_error tuple for a missing file" do
+      assert TsetlinRunner.load("/nonexistent/path.tmbin") == {:error, :io_error}
+    end
+
+    test "load/1 returns an invalid_format tuple for garbage bytes" do
+      path = Path.join(System.tmp_dir!(), "tsetlin_runner_garbage_#{System.unique_integer([:positive])}.tmbin")
+      File.write!(path, <<0, 1, 2, 3>>)
+
+      assert TsetlinRunner.load(path) == {:error, :invalid_format}
+      File.rm(path)
+    end
+
+    test "predicts class 2 when both input bits are false" do
+      with_tiny_model(fn model ->
+        bits = TsetlinRunner.pack_bits([false, false])
+        assert TsetlinRunner.predict(model, bits) == {:ok, 2}
+      end)
+    end
+
+    test "predicts class 1 when both input bits are true" do
+      with_tiny_model(fn model ->
+        bits = TsetlinRunner.pack_bits([true, true])
+        assert TsetlinRunner.predict(model, bits) == {:ok, 1}
+      end)
+    end
+
+    test "breaks a vote tie in favor of the first class" do
+      with_tiny_model(fn model ->
+        assert TsetlinRunner.predict(model, TsetlinRunner.pack_bits([true, false])) == {:ok, 1}
+        assert TsetlinRunner.predict(model, TsetlinRunner.pack_bits([false, true])) == {:ok, 1}
+      end)
+    end
+
+    test "predict/2 returns a bit_length_mismatch tuple for the wrong input size" do
+      with_tiny_model(fn model ->
+        too_short = <<0::little-32>>
+        assert TsetlinRunner.predict(model, too_short) == {:error, :bit_length_mismatch}
+      end)
     end
   end
 end
