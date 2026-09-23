@@ -26,10 +26,17 @@ defmodule TsetlinRunner.TargetTest do
     setup do
       original = System.get_env("MIX_TARGET")
       original_cargo = System.get_env("CARGO_BUILD_TARGET")
+      original_cc = System.get_env("CC")
+      original_linker = System.get_env("CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER")
 
       on_exit(fn ->
         if original, do: System.put_env("MIX_TARGET", original), else: System.delete_env("MIX_TARGET")
         if original_cargo, do: System.put_env("CARGO_BUILD_TARGET", original_cargo), else: System.delete_env("CARGO_BUILD_TARGET")
+        if original_cc, do: System.put_env("CC", original_cc), else: System.delete_env("CC")
+
+        if original_linker,
+          do: System.put_env("CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER", original_linker),
+          else: System.delete_env("CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER")
       end)
 
       :ok
@@ -56,6 +63,26 @@ defmodule TsetlinRunner.TargetTest do
       assert_raise RuntimeError, ~r/unknown MIX_TARGET/, fn ->
         TsetlinRunner.Target.configure_cargo_target!()
       end
+    end
+
+    test "wires the derived CARGO_TARGET_..._LINKER env var to CC when cross-compiling" do
+      System.put_env("MIX_TARGET", "rpi0")
+      System.put_env("CC", "/path/to/arm-linux-gnueabihf-gcc")
+      System.delete_env("CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER")
+
+      assert TsetlinRunner.Target.configure_cargo_target!() == :ok
+
+      assert System.get_env("CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER") ==
+               "/path/to/arm-linux-gnueabihf-gcc"
+    end
+
+    test "does not set a linker env var when CC is unset" do
+      System.put_env("MIX_TARGET", "rpi0")
+      System.delete_env("CC")
+      System.delete_env("CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER")
+
+      assert TsetlinRunner.Target.configure_cargo_target!() == :ok
+      assert System.get_env("CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER") == nil
     end
   end
 end

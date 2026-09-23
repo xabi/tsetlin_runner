@@ -32,6 +32,7 @@ pub enum FormatError {
     UnsupportedVersion(u32),
     InvalidKind(u8),
     Truncated,
+    InvalidHeader,
 }
 
 struct Cursor<'a> {
@@ -103,6 +104,31 @@ pub fn parse(bytes: &[u8]) -> Result<Model, FormatError> {
     let ta_clauses = cur.u32()?;
     let lf = cur.i64()?;
 
+    if clause_size == 0 {
+        return Err(FormatError::InvalidHeader);
+    }
+    if chunks_size == 0 {
+        return Err(FormatError::InvalidHeader);
+    }
+    if ta_clauses == 0 {
+        return Err(FormatError::InvalidHeader);
+    }
+    if chunks_size as u64 != (clause_size as u64 + 63) / 64 {
+        return Err(FormatError::InvalidHeader);
+    }
+    match kind {
+        Kind::Bool => {
+            if classes_num != 2 {
+                return Err(FormatError::InvalidHeader);
+            }
+        }
+        Kind::General => {
+            if classes_num == 0 {
+                return Err(FormatError::InvalidHeader);
+            }
+        }
+    }
+
     let mut classes = Vec::new();
     for _ in 0..classes_num {
         classes.push(cur.i64()?);
@@ -112,9 +138,22 @@ pub fn parse(bytes: &[u8]) -> Result<Model, FormatError> {
         Kind::Bool => 1,
         Kind::General => classes_num as usize,
     };
-    let matrix_len = (chunks_size as usize) * (ta_clauses as usize);
+    // Compute the product in u64 first (cannot overflow: both operands are
+    // u32) and only then convert to usize. On a 64-bit dev/CI host usize is
+    // 64 bits, so this conversion always succeeds and the plain
+    // `usize * usize` multiplication below would never have overflowed
+    // there either -- but on the 32-bit ARMv6 deployment target (Raspberry
+    // Pi Zero), usize is 32 bits, and a chunks_size * ta_clauses product
+    // that fits fine as a u64 can silently wrap around if multiplied
+    // directly as usize, since release builds have overflow checks
+    // disabled by default. This conversion is the safety net for that
+    // target; it cannot be demonstrated failing on a 64-bit host.
+    let matrix_len = match usize::try_from((chunks_size as u64) * (ta_clauses as u64)) {
+        Ok(len) => len,
+        Err(_) => return Err(FormatError::InvalidHeader),
+    };
 
-    let mut blocks = Vec::with_capacity(block_count);
+    let mut blocks = Vec::new();
     for _ in 0..block_count {
         blocks.push(ClauseBlock {
             positive_included_literals: read_matrix(&mut cur, matrix_len)?,
@@ -210,8 +249,82 @@ mod tests {
     #[test]
     fn rejects_oversized_chunks_size_without_panic() {
         let mut bytes = tiny_general_model_bytes();
-        // Overwrite chunks_size (bytes 13..17) with 0xFFFFFFFF to trigger allocation overflow
+        // Overwrite chunks_size (bytes 13..17) with 0xFFFFFFFF. This used to
+        // reach the allocation-overflow guard (Truncated) when matrix_len
+        // computation was attempted; now the chunks_size/clause_size
+        // ceiling-division consistency check in the header validation
+        // catches it first (0xFFFFFFFF is inconsistent with clause_size=2),
+        // returning InvalidHeader before matrix_len is ever computed.
         bytes[13..17].copy_from_slice(&0xFFFFFFFFu32.to_le_bytes());
+        assert_eq!(parse(&bytes), Err(FormatError::InvalidHeader));
+    }
+
+    #[test]
+    fn rejects_zero_clause_size() {
+        let mut bytes = tiny_general_model_bytes();
+        bytes[9..13].copy_from_slice(&0u32.to_le_bytes());
+        assert_eq!(parse(&bytes), Err(FormatError::InvalidHeader));
+    }
+
+    #[test]
+    fn rejects_zero_chunks_size() {
+        let mut bytes = tiny_general_model_bytes();
+        bytes[13..17].copy_from_slice(&0u32.to_le_bytes());
+        assert_eq!(parse(&bytes), Err(FormatError::InvalidHeader));
+    }
+
+    #[test]
+    fn rejects_zero_ta_clauses() {
+        let mut bytes = tiny_general_model_bytes();
+        bytes[21..25].copy_from_slice(&0u32.to_le_bytes());
+        assert_eq!(parse(&bytes), Err(FormatError::InvalidHeader));
+    }
+
+    #[test]
+    fn rejects_chunks_size_clause_size_mismatch() {
+        let mut bytes = tiny_general_model_bytes();
+        // clause_size stays 2 (ceil(2/64) == 1), but chunks_size is set to
+        // 2, which is inconsistent with it.
+        bytes[13..17].copy_from_slice(&2u32.to_le_bytes());
+        assert_eq!(parse(&bytes), Err(FormatError::InvalidHeader));
+    }
+
+    #[test]
+    fn rejects_general_kind_with_zero_classes() {
+        let mut bytes = tiny_general_model_bytes();
+        // kind is already General (1) in the fixture.
+        bytes[17..21].copy_from_slice(&0u32.to_le_bytes());
+        assert_eq!(parse(&bytes), Err(FormatError::InvalidHeader));
+    }
+
+    #[test]
+    fn rejects_bool_kind_with_wrong_classes_num() {
+        let mut bytes = tiny_general_model_bytes();
+        bytes[8] = 0; // kind = Bool
+        bytes[17..21].copy_from_slice(&3u32.to_le_bytes()); // classes_num = 3, not 2
+        assert_eq!(parse(&bytes), Err(FormatError::InvalidHeader));
+    }
+
+    #[test]
+    fn rejects_oversized_classes_num_without_panic() {
+        let mut bytes = tiny_general_model_bytes();
+        // classes_num = 0xFFFFFFFF is non-zero, so it passes the
+        // General-kind header check (classes_num != 0) -- there is no
+        // upper bound on classes_num in the header validation. It is
+        // instead caught, without panicking, by the classes-reading loop's
+        // existing Vec::new()-based bounds check (the fixture only has a
+        // few bytes left after the header, so the i64 reads run out of
+        // data quickly and return Truncated rather than growing a huge
+        // Vec or panicking). This regression test specifically confirms
+        // that no-panic behavior for the classes loop's Vec::new() fix.
+        bytes[17..21].copy_from_slice(&0xFFFFFFFFu32.to_le_bytes());
         assert_eq!(parse(&bytes), Err(FormatError::Truncated));
+    }
+
+    #[test]
+    fn rejects_invalid_kind_byte() {
+        let mut bytes = tiny_general_model_bytes();
+        bytes[8] = 2;
+        assert_eq!(parse(&bytes), Err(FormatError::InvalidKind(2)));
     }
 }

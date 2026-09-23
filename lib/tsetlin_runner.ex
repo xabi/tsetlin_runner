@@ -48,7 +48,7 @@ defmodule TsetlinRunner do
   returned by `load/1`.
   """
   @spec predict(reference(), binary()) :: {:ok, integer()} | {:error, :bit_length_mismatch}
-  def predict(model, packed_bits) when is_binary(packed_bits) do
+  def predict(model, packed_bits) when is_reference(model) and is_binary(packed_bits) do
     Native.predict_nif(model, packed_bits)
   end
 end

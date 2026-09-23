@@ -41,6 +41,18 @@ defmodule TsetlinRunner.Target do
 
       {:ok, triple} ->
         System.put_env("CARGO_BUILD_TARGET", triple)
+
+        case System.get_env("CC") do
+          nil ->
+            :ok
+
+          cc ->
+            linker_var =
+              "CARGO_TARGET_" <> String.upcase(String.replace(triple, "-", "_")) <> "_LINKER"
+
+            System.put_env(linker_var, cc)
+        end
+
         :ok
 
       {:error, :unknown_target} ->
@@ -71,7 +83,7 @@ defmodule TsetlinRunner.MixProject do
 
   defp deps do
     [
-      {:rustler, "~> 0.34"}
+      {:rustler, "~> 0.38.0"}
     ]
   end
 end

@@ -41,10 +41,11 @@ fn predict_nif(resource: ResourceArc<ModelResource>, bits: Binary) -> Result<i64
     Ok(tsetlin::predict(model, &chunks))
 }
 
-#[allow(unused_must_use, non_local_definitions)]
+#[rustler::resource_impl]
+impl rustler::Resource for ModelResource {}
+
 fn on_load(env: Env, _info: Term) -> bool {
-    rustler::resource!(ModelResource, env);
-    true
+    env.register::<ModelResource>().is_ok()
 }
 
 rustler::init!("Elixir.TsetlinRunner.Native", load = on_load);

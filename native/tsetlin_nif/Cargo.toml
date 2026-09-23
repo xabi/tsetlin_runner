@@ -8,4 +8,4 @@ name = "tsetlin_nif"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-rustler = "0.34"
+rustler = "0.38"

@@ -10,6 +10,8 @@
   # https://devenv.sh/languages/
   languages.elixir.enable = true;
   languages.rust.enable = true;
+  languages.rust.channel = "stable";
+  languages.rust.targets = [ "arm-unknown-linux-gnueabihf" "armv7-unknown-linux-gnueabihf" ];
 
   # https://devenv.sh/processes/
   # processes.dev.exec = "${lib.getExe pkgs.watchexec} -n -- ls -la";

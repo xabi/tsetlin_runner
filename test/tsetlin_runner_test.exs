@@ -104,5 +104,47 @@ defmodule TsetlinRunnerTest do
         assert TsetlinRunner.predict(model, too_short) == {:error, :bit_length_mismatch}
       end)
     end
+
+    test "load/1 returns an invalid_format tuple for a header with semantically invalid fields" do
+      # Same layout as tiny_model_bytes/0, but classes_num is corrupted to 0,
+      # which is invalid for kind=General (classes_num must be non-zero) --
+      # this used to parse "successfully" and later panic in predict/2's
+      # out-of-bounds `classes[0]`/`classes[1]` access instead of surfacing
+      # as a tagged error.
+      path =
+        Path.join(
+          System.tmp_dir!(),
+          "tsetlin_runner_invalid_header_#{System.unique_integer([:positive])}.tmbin"
+        )
+
+      invalid_bytes = <<
+        "TSTM",
+        1::little-32,
+        1::8,
+        2::little-32,
+        1::little-32,
+        0::little-32,
+        1::little-32,
+        2::little-64,
+        1::little-64,
+        2::little-64,
+        3::little-64,
+        0::little-64,
+        0::little-64,
+        0::little-64,
+        0::little-64,
+        3::little-64,
+        0::little-64,
+        0::little-64
+      >>
+
+      File.write!(path, invalid_bytes)
+
+      try do
+        assert TsetlinRunner.load(path) == {:error, :invalid_format}
+      after
+        File.rm(path)
+      end
+    end
   end
 end

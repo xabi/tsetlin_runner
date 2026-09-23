@@ -19,5 +19,8 @@ erl_crash.dump
 # Rust (Rustler NIF crate)
 native/*/target/
 
+# Compiled NIF artifact (host-architecture-specific build output)
+/priv/native/
+
 # SDD workspace (subagent-driven-development scratch, per-plan)
 /.superpowers/
