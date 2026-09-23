@@ -144,8 +144,9 @@ mod tests {
     #[test]
     fn bool_kind_uses_a_single_shared_block() {
         // kind=0, clause_size=2, chunks_size=1, classes_num=2 (implicit
-        // true/false), ta_clauses=1, lf=2. One block: positive literals
-        // require both bits true; no negative literals.
+        // true/false), ta_clauses=1, lf=2. One block: positive block
+        // requires both bits true; negative block requires both bits false
+        // (inverted literals).
         let mut bytes = Vec::new();
         bytes.extend_from_slice(b"TSTM");
         bytes.extend_from_slice(&1u32.to_le_bytes());
@@ -158,17 +159,17 @@ mod tests {
         bytes.extend_from_slice(&1i64.to_le_bytes()); // classes[0] = true
         bytes.extend_from_slice(&0i64.to_le_bytes()); // classes[1] = false
         // single block
-        bytes.extend_from_slice(&3u64.to_le_bytes()); // positive literals = 0b11
-        bytes.extend_from_slice(&0u64.to_le_bytes());
-        bytes.extend_from_slice(&0u64.to_le_bytes());
-        bytes.extend_from_slice(&0u64.to_le_bytes());
+        bytes.extend_from_slice(&3u64.to_le_bytes()); // positive_included_literals = 0b11
+        bytes.extend_from_slice(&0u64.to_le_bytes()); // positive_included_literals_inverted
+        bytes.extend_from_slice(&0u64.to_le_bytes()); // negative_included_literals
+        bytes.extend_from_slice(&3u64.to_le_bytes()); // negative_included_literals_inverted = 0b11
 
         let model = format::parse(&bytes).unwrap();
         assert_eq!(model.blocks.len(), 1);
 
-        // both bits true -> pos=2, neg=2 -> pos > neg is false -> false
-        assert_eq!(predict(&model, &[0b11]), 0);
-        // both bits false -> pos=0, neg=2 -> pos > neg is false -> false
+        // both bits true -> pos=2 (0 mismatches), neg=0 (2 mismatches) -> pos > neg -> true (classes[0])
+        assert_eq!(predict(&model, &[0b11]), 1);
+        // both bits false -> pos=0 (2 mismatches), neg=2 (0 mismatches) -> pos > neg is false -> false (classes[1])
         assert_eq!(predict(&model, &[0b00]), 0);
     }
 }
