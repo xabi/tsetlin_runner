@@ -71,7 +71,7 @@ impl<'a> Cursor<'a> {
 }
 
 fn read_matrix(cur: &mut Cursor, len: usize) -> Result<Vec<u64>, FormatError> {
-    let mut v = Vec::with_capacity(len);
+    let mut v = Vec::new();
     for _ in 0..len {
         v.push(cur.u64()?);
     }
@@ -103,7 +103,7 @@ pub fn parse(bytes: &[u8]) -> Result<Model, FormatError> {
     let ta_clauses = cur.u32()?;
     let lf = cur.i64()?;
 
-    let mut classes = Vec::with_capacity(classes_num as usize);
+    let mut classes = Vec::new();
     for _ in 0..classes_num {
         classes.push(cur.i64()?);
     }
@@ -204,5 +204,13 @@ mod tests {
         let bytes = tiny_general_model_bytes();
         let truncated = &bytes[..bytes.len() - 4];
         assert_eq!(parse(truncated), Err(FormatError::Truncated));
+    }
+
+    #[test]
+    fn rejects_oversized_chunks_size_without_panic() {
+        let mut bytes = tiny_general_model_bytes();
+        // Overwrite chunks_size (bytes 13..17) with 0xFFFFFFFF to trigger allocation overflow
+        bytes[13..17].copy_from_slice(&0xFFFFFFFFu32.to_le_bytes());
+        assert_eq!(parse(&bytes), Err(FormatError::Truncated));
     }
 }
