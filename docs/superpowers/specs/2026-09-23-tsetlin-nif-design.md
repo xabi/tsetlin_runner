@@ -69,6 +69,7 @@ clause_size u32  (input feature vector length, in bits)
 chunks_size u32  (= ceil(clause_size / 64))
 classes_num u32
 ta_clauses  u32  (clauses per polarity per class)
+lf          i64  (leniency factor — see below)
 classes[]   i64 * classes_num   (labels; bool kind uses [1, 0] by convention)
 blocks[]    1 block if kind=0, classes_num blocks if kind=1
   each block = 4 matrices of u64[chunks_size * ta_clauses], in order:
@@ -77,6 +78,13 @@ blocks[]    1 block if kind=0, classes_num blocks if kind=1
     negative_included_literals
     negative_included_literals_inverted
 ```
+
+`lf` is `TMClassifier.LF` from Julia. It is required at inference time, not
+just during training: `check_clause` returns `max(0, LF - mismatch_count)`
+for each clause, and `vote()` sums that value (not a plain 0/1) across
+clauses to produce `pos`/`neg`. `predict()` compares those sums directly,
+so `LF` directly parameterizes every prediction and must travel with the
+model. (`T`, `S`, `L` are training-only and are correctly excluded.)
 
 Endianness is not negotiated: both the Julia export host and the Rust
 NIF's runtime targets (x86_64 dev machine, ARMv6 Raspberry Pi Zero) are
