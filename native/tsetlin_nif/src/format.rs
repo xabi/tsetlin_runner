@@ -136,39 +136,40 @@ pub fn parse(bytes: &[u8]) -> Result<Model, FormatError> {
     })
 }
 
+/// The tiny 2-bit, 2-class fixture also used by `tsetlin.rs`'s tests
+/// and by the Elixir integration test:
+/// - class 1 fires on input bits (true, true)
+/// - class 2 fires on input bits (false, false)
+/// - LF = 2, one clause per polarity per class, no negative literals.
+#[cfg(test)]
+pub(crate) fn tiny_general_model_bytes() -> Vec<u8> {
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(b"TSTM");
+    bytes.extend_from_slice(&1u32.to_le_bytes()); // version
+    bytes.push(1); // kind = General
+    bytes.extend_from_slice(&2u32.to_le_bytes()); // clause_size
+    bytes.extend_from_slice(&1u32.to_le_bytes()); // chunks_size
+    bytes.extend_from_slice(&2u32.to_le_bytes()); // classes_num
+    bytes.extend_from_slice(&1u32.to_le_bytes()); // ta_clauses
+    bytes.extend_from_slice(&2i64.to_le_bytes()); // lf
+    bytes.extend_from_slice(&1i64.to_le_bytes()); // classes[0] = 1
+    bytes.extend_from_slice(&2i64.to_le_bytes()); // classes[1] = 2
+    // class 1 block: positive literals = 0b11, rest 0
+    bytes.extend_from_slice(&3u64.to_le_bytes());
+    bytes.extend_from_slice(&0u64.to_le_bytes());
+    bytes.extend_from_slice(&0u64.to_le_bytes());
+    bytes.extend_from_slice(&0u64.to_le_bytes());
+    // class 2 block: positive_inverted literals = 0b11, rest 0
+    bytes.extend_from_slice(&0u64.to_le_bytes());
+    bytes.extend_from_slice(&3u64.to_le_bytes());
+    bytes.extend_from_slice(&0u64.to_le_bytes());
+    bytes.extend_from_slice(&0u64.to_le_bytes());
+    bytes
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// The tiny 2-bit, 2-class fixture also used by `tsetlin.rs`'s tests
-    /// and by the Elixir integration test:
-    /// - class 1 fires on input bits (true, true)
-    /// - class 2 fires on input bits (false, false)
-    /// - LF = 2, one clause per polarity per class, no negative literals.
-    pub fn tiny_general_model_bytes() -> Vec<u8> {
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(b"TSTM");
-        bytes.extend_from_slice(&1u32.to_le_bytes()); // version
-        bytes.push(1); // kind = General
-        bytes.extend_from_slice(&2u32.to_le_bytes()); // clause_size
-        bytes.extend_from_slice(&1u32.to_le_bytes()); // chunks_size
-        bytes.extend_from_slice(&2u32.to_le_bytes()); // classes_num
-        bytes.extend_from_slice(&1u32.to_le_bytes()); // ta_clauses
-        bytes.extend_from_slice(&2i64.to_le_bytes()); // lf
-        bytes.extend_from_slice(&1i64.to_le_bytes()); // classes[0] = 1
-        bytes.extend_from_slice(&2i64.to_le_bytes()); // classes[1] = 2
-        // class 1 block: positive literals = 0b11, rest 0
-        bytes.extend_from_slice(&3u64.to_le_bytes());
-        bytes.extend_from_slice(&0u64.to_le_bytes());
-        bytes.extend_from_slice(&0u64.to_le_bytes());
-        bytes.extend_from_slice(&0u64.to_le_bytes());
-        // class 2 block: positive_inverted literals = 0b11, rest 0
-        bytes.extend_from_slice(&0u64.to_le_bytes());
-        bytes.extend_from_slice(&3u64.to_le_bytes());
-        bytes.extend_from_slice(&0u64.to_le_bytes());
-        bytes.extend_from_slice(&0u64.to_le_bytes());
-        bytes
-    }
 
     #[test]
     fn parses_the_tiny_general_fixture() {
