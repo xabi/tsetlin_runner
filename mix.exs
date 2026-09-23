@@ -1,3 +1,57 @@
+defmodule TsetlinRunner.Target do
+  @moduledoc """
+  Maps a Nerves `MIX_TARGET` value to the Rust target triple Cargo should
+  cross-compile the `tsetlin_nif` crate for. Defined here (rather than
+  under `lib/`) because `mix.exs` needs it before anything in `lib/` has
+  been compiled.
+  """
+
+  @mapping %{
+    "rpi0" => "arm-unknown-linux-gnueabihf",
+    "rpi" => "arm-unknown-linux-gnueabihf",
+    "rpi2" => "armv7-unknown-linux-gnueabihf",
+    "rpi3" => "armv7-unknown-linux-gnueabihf",
+    "rpi3a" => "armv7-unknown-linux-gnueabihf",
+    "rpi4" => "armv7-unknown-linux-gnueabihf",
+    "bbb" => "armv7-unknown-linux-gnueabihf"
+  }
+
+  @spec resolve(String.t() | nil) :: {:ok, :native} | {:ok, String.t()} | {:error, :unknown_target}
+  def resolve(nil), do: {:ok, :native}
+  def resolve("host"), do: {:ok, :native}
+
+  def resolve(mix_target) when is_binary(mix_target) do
+    case Map.fetch(@mapping, mix_target) do
+      {:ok, triple} -> {:ok, triple}
+      :error -> {:error, :unknown_target}
+    end
+  end
+
+  @doc """
+  Reads `MIX_TARGET` from the OS environment and sets `CARGO_BUILD_TARGET`
+  accordingly, so Rustler's `cargo build` cross-compiles automatically.
+  Raises on an unrecognized `MIX_TARGET` rather than silently falling
+  back to a host build.
+  """
+  @spec configure_cargo_target!() :: :ok
+  def configure_cargo_target! do
+    case resolve(System.get_env("MIX_TARGET")) do
+      {:ok, :native} ->
+        :ok
+
+      {:ok, triple} ->
+        System.put_env("CARGO_BUILD_TARGET", triple)
+        :ok
+
+      {:error, :unknown_target} ->
+        raise "tsetlin_runner: unknown MIX_TARGET=#{inspect(System.get_env("MIX_TARGET"))}, " <>
+                "add it to TsetlinRunner.Target's mapping table"
+    end
+  end
+end
+
+TsetlinRunner.Target.configure_cargo_target!()
+
 defmodule TsetlinRunner.MixProject do
   use Mix.Project
 
