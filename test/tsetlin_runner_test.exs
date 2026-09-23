@@ -70,8 +70,11 @@ defmodule TsetlinRunnerTest do
       path = Path.join(System.tmp_dir!(), "tsetlin_runner_garbage_#{System.unique_integer([:positive])}.tmbin")
       File.write!(path, <<0, 1, 2, 3>>)
 
-      assert TsetlinRunner.load(path) == {:error, :invalid_format}
-      File.rm(path)
+      try do
+        assert TsetlinRunner.load(path) == {:error, :invalid_format}
+      after
+        File.rm(path)
+      end
     end
 
     test "predicts class 2 when both input bits are false" do
