@@ -1,0 +1,23 @@
+# Devenv
+.devenv*
+devenv.local.nix
+devenv.local.yaml
+
+# direnv
+.direnv
+
+# pre-commit
+.pre-commit-config.yaml
+
+# Mix / Elixir
+/_build/
+/deps/
+/.elixir_ls/
+erl_crash.dump
+*.ez
+
+# Rust (Rustler NIF crate)
+native/*/target/
+
+# SDD workspace (subagent-driven-development scratch, per-plan)
+/.superpowers/
