@@ -1,3 +1,5 @@
+TsetlinRunner.Target.configure_cargo_target!()
+
 defmodule TsetlinRunner.Native do
   @moduledoc false
   use Rustler, otp_app: :tsetlin_runner, crate: "tsetlin_nif"

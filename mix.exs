@@ -32,6 +32,14 @@ defmodule TsetlinRunner.Target do
   accordingly, so Rustler's `cargo build` cross-compiles automatically.
   Raises on an unrecognized `MIX_TARGET` rather than silently falling
   back to a host build.
+
+  Must be called at the call site that actually triggers Rustler's
+  compile (`TsetlinRunner.Native`, right before `use Rustler`), not from
+  this file's top level: under Nerves, `$CC` is exported by
+  `Nerves.Env.bootstrap/0` (run via `mix nerves.loadpaths`), which fires
+  after Mix has already loaded a `path:`-referenced dependency's
+  `mix.exs` to resolve the dependency graph. Calling this here would read
+  `$CC` before Nerves sets it and silently skip the linker override.
   """
   @spec configure_cargo_target!() :: :ok
   def configure_cargo_target! do
@@ -61,8 +69,6 @@ defmodule TsetlinRunner.Target do
     end
   end
 end
-
-TsetlinRunner.Target.configure_cargo_target!()
 
 defmodule TsetlinRunner.MixProject do
   use Mix.Project
