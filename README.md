@@ -14,9 +14,26 @@ format contract).
 
 Built to run inference on resource-constrained targets — specifically a
 [Nerves](https://nerves-project.org/) firmware for the Raspberry Pi Zero
-(1st generation, ARMv6, single core, 512MB RAM). `TsetlinRunner.Target`
-maps a Nerves `MIX_TARGET` to the matching Rust cross-compilation triple
-so `mix compile`/`mix firmware` cross-compile the crate automatically.
+(1st generation, ARMv6, single core, 512MB RAM).
+
+## Usable from Nerves
+
+`TsetlinRunner.Target` maps a Nerves `MIX_TARGET` to the matching Rust
+cross-compilation triple, so `mix compile`/`mix firmware` cross-compile
+the crate automatically — no manual `CARGO_BUILD_TARGET` setup needed.
+Verified against a real Nerves `rpi0` build (not just simulated env vars):
+the produced NIF is a genuine ARM EABI5 hard-float `.so`, not a host build
+that happened to exit 0.
+
+Add it as a target-only dependency where you actually need it:
+
+```elixir
+{:tsetlin_runner, path: "../tsetlin_runner", targets: :rpi0}
+```
+
+Supported `MIX_TARGET`s (see `TsetlinRunner.Target`): `rpi0`, `rpi`,
+`rpi2`, `rpi3`, `rpi3a`, `rpi4`, `bbb`. An unrecognized `MIX_TARGET` raises
+at compile time instead of silently building for the host.
 
 ## Usage
 
