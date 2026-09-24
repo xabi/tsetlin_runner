@@ -31,6 +31,13 @@ packed = TsetlinRunner.pack_bits([true, false, true, ...])
 64-bit-chunk layout Tsetlin Machine models expect (matching `Tsetlin.jl`'s
 own `TMInput` bit layout).
 
+## Producing a `.tmbin` file
+
+This repo only reads `.tmbin`. To write one from a trained
+[`Tsetlin.jl`][tsetlin-jl] `TMClassifier`, see [`julia/`](julia/) — a
+self-contained exporter (`export_tm`) that depends on nothing but
+`Tsetlin.jl` itself.
+
 ## Installation
 
 Not published to Hex — reference it as a path or git dependency:
