@@ -1,16 +1,11 @@
 # tsetlin_runner
 
 An Elixir library that runs **inference** for [Tsetlin Machine][tsetlin-jl]
-classifiers, via a Rust NIF ([Rustler][rustler]). It loads a compiled
-`.tmbin` model file and calls `predict/2` on it — nothing else; there is no
-training code here.
-
-Models are trained in Julia, using the `tsetlin_world` project, which
-vendors [`BooBSD/Tsetlin.jl`][tsetlin-jl] — the actual Tsetlin Machine
-implementation these models come from. `tsetlin_world` compiles a trained
-classifier and exports it to the `.tmbin` binary format this library's
-Rust NIF parses (see `docs/superpowers/specs/2026-09-23-tsetlin-nif-design.md`
-for the format contract).
+classifiers trained with [`BooBSD/Tsetlin.jl`][tsetlin-jl], via a Rust NIF
+([Rustler][rustler]). It loads a compiled `.tmbin` model file and calls
+`predict/2` on it — nothing else; there is no training code here (see
+`docs/superpowers/specs/2026-09-23-tsetlin-nif-design.md` for the model
+format contract).
 
 [tsetlin-jl]: https://github.com/BooBSD/Tsetlin.jl
 [rustler]: https://github.com/rusterlium/rustler
