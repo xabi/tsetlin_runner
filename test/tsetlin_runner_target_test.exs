@@ -76,13 +76,25 @@ defmodule TsetlinRunner.TargetTest do
                "/path/to/arm-linux-gnueabihf-gcc"
     end
 
-    test "does not set a linker env var when CC is unset" do
+    test "raises when cross-compiling with CC unset and no linker override already in place" do
       System.put_env("MIX_TARGET", "rpi0")
       System.delete_env("CC")
       System.delete_env("CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER")
 
+      assert_raise RuntimeError, ~r/CC.*unset|unset.*CC/, fn ->
+        TsetlinRunner.Target.configure_cargo_target!()
+      end
+    end
+
+    test "does not raise when CC is unset but a linker override is already set" do
+      System.put_env("MIX_TARGET", "rpi0")
+      System.delete_env("CC")
+      System.put_env("CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER", "/path/to/preset-linker")
+
       assert TsetlinRunner.Target.configure_cargo_target!() == :ok
-      assert System.get_env("CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER") == nil
+
+      assert System.get_env("CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER") ==
+               "/path/to/preset-linker"
     end
   end
 end

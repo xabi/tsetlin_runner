@@ -50,14 +50,19 @@ defmodule TsetlinRunner.Target do
       {:ok, triple} ->
         System.put_env("CARGO_BUILD_TARGET", triple)
 
+        linker_var =
+          "CARGO_TARGET_" <> String.upcase(String.replace(triple, "-", "_")) <> "_LINKER"
+
         case System.get_env("CC") do
           nil ->
-            :ok
+            if System.get_env(linker_var) == nil do
+              raise "tsetlin_runner: cross-compiling for #{triple} but $CC is unset and " <>
+                      "$#{linker_var} is not already set -- Cargo would silently fall back " <>
+                      "to the host linker and fail to link ARM objects. Set $CC (Nerves does " <>
+                      "this via `mix nerves.loadpaths`) or set $#{linker_var} directly."
+            end
 
           cc ->
-            linker_var =
-              "CARGO_TARGET_" <> String.upcase(String.replace(triple, "-", "_")) <> "_LINKER"
-
             System.put_env(linker_var, cc)
         end
 
