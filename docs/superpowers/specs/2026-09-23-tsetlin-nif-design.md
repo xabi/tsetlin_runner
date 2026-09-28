@@ -145,10 +145,13 @@ in Elixir.
 - On a normal (non-Nerves) dev machine, the library compiles and tests
   natively with no special setup — the crate has no dependencies besides
   `rustler`.
-- `predict/2` is scheduled as a Rustler **DirtyCpu** NIF. The Pi Zero is
-  single-core at 1GHz; running `vote()` on the normal (non-dirty)
-  scheduler risks stalling the only BEAM scheduler thread for the
-  duration of a possibly-nontrivial loop.
+- `predict/2` is a normal (non-dirty) NIF. It was originally scheduled
+  DirtyCpu on the unmeasured assumption that `vote()` might run long
+  enough to stall the Pi Zero's single BEAM scheduler thread; a real
+  on-device benchmark (2026-09-28) measured the actual call at ~300us —
+  well under the ~1ms guideline for a normal NIF — and ~75% of the
+  previously-measured per-call cost turned out to be the DirtyCpu
+  scheduler hand-off itself, not `vote()`.
 
 ## 6. Testing and error handling
 

@@ -24,7 +24,13 @@ fn load_model_nif(path: String) -> Result<ResourceArc<ModelResource>, Atom> {
     Ok(ResourceArc::new(ModelResource(model)))
 }
 
-#[rustler::nif(schedule = "DirtyCpu")]
+// Not DirtyCpu-scheduled: measured at ~300us/call on a Pi Zero (radius=8,
+// clause_size=1447), well under the ~1ms guideline for a normal NIF.
+// DirtyCpu was the original (unmeasured) choice; on real hardware it added
+// ~75% pure scheduler hand-off overhead on top of this call's own cost --
+// see docs/superpowers/plans/2026-09-25-ground-tm-rectangular-patches.md's
+// 2026-09-28 follow-up discussion for the benchmark that found this.
+#[rustler::nif]
 fn predict_nif(resource: ResourceArc<ModelResource>, bits: Binary) -> Result<i64, Atom> {
     let model = &resource.0;
     let expected_len = (model.chunks_size as usize) * 8;
