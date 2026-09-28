@@ -1,5 +1,6 @@
 pub mod format;
 pub mod jpeg;
+pub mod resize;
 pub mod tsetlin;
 
 use rustler::{Atom, Binary, Env, ResourceArc, Term};
