@@ -147,4 +147,83 @@ defmodule TsetlinRunnerTest do
       end
     end
   end
+
+  describe "classify_frame/4" do
+    # A 7-bit model (radius=0: (2*0+1)^2*5+2 = 7), one clause per polarity,
+    # so it always predicts class 1 regardless of input -- this task only
+    # needs a structurally valid model, not a semantically meaningful one
+    # (numeric correctness against Julia is a separate task).
+    defp tiny_7bit_model_bytes do
+      <<
+        "TSTM",
+        1::little-32,
+        0::8,
+        7::little-32,
+        1::little-32,
+        2::little-32,
+        1::little-32,
+        1::little-64,
+        1::little-64,
+        0::little-64,
+        0::little-64,
+        0::little-64,
+        0::little-64,
+        0::little-64
+      >>
+    end
+
+    defp with_tiny_7bit_model(fun) do
+      path =
+        Path.join(System.tmp_dir!(), "tsetlin_runner_7bit_#{System.unique_integer([:positive])}.tmbin")
+
+      File.write!(path, tiny_7bit_model_bytes())
+
+      try do
+        {:ok, model} = TsetlinRunner.load(path)
+        fun.(model)
+      after
+        File.rm(path)
+      end
+    end
+
+    @fixture_jpeg File.read!(
+                     Path.join([
+                       __DIR__,
+                       "..",
+                       "native/tsetlin_nif/tests/fixtures/tiny_solid.jpg"
+                     ])
+                   )
+
+    test "returns a fully-classified out_w*out_h grid for a valid frame" do
+      with_tiny_7bit_model(fn model ->
+        assert {:ok, grid} = TsetlinRunner.classify_frame(model, @fixture_jpeg, 2, 2, 0)
+        assert length(grid) == 4
+        assert Enum.all?(grid, &(&1 in [0, 1]))
+      end)
+    end
+
+    test "returns invalid_jpeg for malformed frame bytes" do
+      with_tiny_7bit_model(fn model ->
+        assert TsetlinRunner.classify_frame(model, <<0, 1, 2, 3>>, 2, 2, 0) ==
+                 {:error, :invalid_jpeg}
+      end)
+    end
+
+    test "returns invalid_dimensions for out_w=0 without attempting to decode" do
+      with_tiny_7bit_model(fn model ->
+        # Deliberately-invalid JPEG bytes: if dimensions were checked AFTER
+        # decode, this would fail with :invalid_jpeg instead.
+        assert TsetlinRunner.classify_frame(model, <<0, 1, 2, 3>>, 0, 2, 0) ==
+                 {:error, :invalid_dimensions}
+      end)
+    end
+
+    test "returns bit_length_mismatch when radius doesn't match the model's clause_size" do
+      with_tiny_7bit_model(fn model ->
+        # This model's clause_size is 7 (radius=0). radius=1 -> 47 bits.
+        assert TsetlinRunner.classify_frame(model, @fixture_jpeg, 2, 2, 1) ==
+                 {:error, :bit_length_mismatch}
+      end)
+    end
+  end
 end

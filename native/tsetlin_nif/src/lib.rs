@@ -12,6 +12,8 @@ mod atoms {
         invalid_format,
         io_error,
         bit_length_mismatch,
+        invalid_jpeg,
+        invalid_dimensions,
     }
 }
 
@@ -49,6 +51,43 @@ fn predict_nif(resource: ResourceArc<ModelResource>, bits: Binary) -> Result<i64
         .collect();
 
     Ok(tsetlin::predict(model, &chunks))
+}
+
+#[rustler::nif]
+fn classify_frame_nif(
+    resource: ResourceArc<ModelResource>,
+    jpeg_bytes: Binary,
+    out_w: u32,
+    out_h: u32,
+    radius: u32,
+) -> Result<Vec<i64>, Atom> {
+    if out_w == 0 || out_h == 0 {
+        return Err(atoms::invalid_dimensions());
+    }
+
+    let decoded = jpeg::decode(jpeg_bytes.as_slice()).map_err(|_| atoms::invalid_jpeg())?;
+    let resized = resize::resize_box(&decoded, out_w, out_h);
+    let maps = features::compute_feature_maps(&resized);
+
+    let model = &resource.0;
+    let expected_len = ((2 * radius + 1) as usize).pow(2) * 5 + 2;
+    // Compare the exact bit length against the model's own clause_size, not
+    // against chunks_size (chunks round up to 64-bit boundaries, so e.g.
+    // 7 bits and 47 bits both round to 1 chunk -- a chunks-only comparison
+    // cannot tell them apart).
+    if expected_len != model.clause_size as usize {
+        return Err(atoms::bit_length_mismatch());
+    }
+
+    let mut grid = Vec::with_capacity((out_w * out_h) as usize);
+    for row in 0..out_h {
+        for col in 0..out_w {
+            let bits = window::cell_bits(&maps, col, row, radius);
+            let chunks = window::pack_bits(&bits);
+            grid.push(tsetlin::predict(model, &chunks));
+        }
+    }
+    Ok(grid)
 }
 
 #[rustler::resource_impl]

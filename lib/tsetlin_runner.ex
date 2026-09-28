@@ -51,4 +51,32 @@ defmodule TsetlinRunner do
   def predict(model, packed_bits) when is_reference(model) and is_binary(packed_bits) do
     Native.predict_nif(model, packed_bits)
   end
+
+  @doc """
+  Classifies every cell of an `out_w`x`out_h` grid from a raw JPEG frame in
+  one call: JPEG decode, box-average resize, feature-map computation, and
+  per-cell `predict/2` -- replicating `tsetlin_world`'s Julia pipeline
+  exactly (see docs/superpowers/specs/2026-09-28-ground-vision-nif-design.md).
+
+  Returns a flat, row-major list (`index = row * out_w + col`, 0-indexed)
+  of the loaded model's own class labels -- this is a different order
+  than `tsetlin_world`'s column-major Julia grids.
+
+  `radius` must match whatever radius the loaded model was trained with
+  (i.e. `ground_feature_len(radius)` must equal the model's `clause_size`),
+  or this returns `{:error, :bit_length_mismatch}`.
+
+  `out_w`/`out_h` of `0` are accepted at the Elixir boundary (rather than
+  raising `FunctionClauseError`) so the NIF's own fail-fast dimension
+  check can return the documented `{:error, :invalid_dimensions}` instead.
+  """
+  @spec classify_frame(reference(), binary(), non_neg_integer(), non_neg_integer(), non_neg_integer()) ::
+          {:ok, [integer()]} | {:error, atom()}
+  def classify_frame(model, jpeg, out_w, out_h, radius)
+      when is_reference(model) and is_binary(jpeg) and
+             is_integer(out_w) and out_w >= 0 and
+             is_integer(out_h) and out_h >= 0 and
+             is_integer(radius) and radius >= 0 do
+    Native.classify_frame_nif(model, jpeg, out_w, out_h, radius)
+  end
 end
