@@ -1,4 +1,5 @@
 pub mod format;
+pub mod features;
 pub mod jpeg;
 pub mod resize;
 pub mod tsetlin;
