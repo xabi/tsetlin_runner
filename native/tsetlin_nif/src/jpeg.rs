@@ -5,6 +5,12 @@ pub enum DecodeError {
     Malformed,
 }
 
+// Generous over the deployed 320x240 camera capture (and the resize target,
+// which is always smaller than the source) -- this exists only to reject a
+// "JPEG bomb" (a tiny file whose header declares huge dimensions) before
+// any large buffer is allocated, not to constrain real camera frames.
+pub const MAX_DIM: usize = 2048;
+
 #[derive(Debug, PartialEq)]
 pub struct RgbImage {
     pub width: u32,
@@ -18,7 +24,10 @@ pub fn decode(jpeg_bytes: &[u8]) -> Result<RgbImage, DecodeError> {
     // third-party decoder code (see this plan's Global Constraints).
     let result = panic::catch_unwind(|| {
         let cursor = zune_jpeg::zune_core::bytestream::ZCursor::new(jpeg_bytes);
-        let mut decoder = zune_jpeg::JpegDecoder::new(cursor);
+        let options = zune_jpeg::zune_core::options::DecoderOptions::default()
+            .set_max_width(MAX_DIM)
+            .set_max_height(MAX_DIM);
+        let mut decoder = zune_jpeg::JpegDecoder::new_with_options(cursor, options);
         let pixels = decoder.decode().map_err(|_| DecodeError::Malformed)?;
         let info = decoder.info().ok_or(DecodeError::Malformed)?;
         Ok::<_, DecodeError>((info.width as u32, info.height as u32, pixels))
@@ -71,5 +80,19 @@ mod tests {
         // panic -- this is the untrusted-input boundary (a camera frame).
         let truncated = &FIXTURE[..10];
         assert_eq!(decode(truncated), Err(DecodeError::Malformed));
+    }
+
+    #[test]
+    fn rejects_a_frame_wider_than_max_dim_without_allocating_it() {
+        // Final review (2026-09-28): decode() had no bound on the decoded
+        // image's own declared dimensions, so a small JPEG claiming e.g.
+        // 16384x16384 pixels would still fully decode into a multi-GB
+        // buffer before this function ever sees `out_w`/`out_h` -- a "JPEG
+        // bomb" that aborts the whole BEAM on a 512MB device (not
+        // catchable by catch_unwind, since an allocator abort isn't a
+        // panic). Fixture is 3000x8 -- tiny on disk (JPEG compresses a
+        // solid color trivially) but wider than MAX_DIM.
+        const OVERSIZED: &[u8] = include_bytes!("../tests/fixtures/oversized.jpg");
+        assert_eq!(decode(OVERSIZED), Err(DecodeError::Malformed));
     }
 }

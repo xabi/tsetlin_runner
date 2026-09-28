@@ -53,7 +53,16 @@ fn predict_nif(resource: ResourceArc<ModelResource>, bits: Binary) -> Result<i64
     Ok(tsetlin::predict(model, &chunks))
 }
 
-#[rustler::nif]
+// DirtyCpu-scheduled, unlike predict_nif: this does up to hundreds of
+// predicts (one per grid cell) plus JPEG decode/resize/feature-map work in
+// a single call -- on the Pi Zero this is measured at hundreds of ms for
+// the deployed 32x24/radius=8 config (see Robomow.TsetlinBench's "one
+// simulated frame" number: 768 predicts x ~300us/predict-equivalent work),
+// far past the ~1ms guideline for a normal NIF that predict_nif's own
+// (deliberately opposite) DirtyCpu removal relied on. Blocking a normal
+// scheduler for that long would stall every other process on it, including
+// any safety-critical sensor loop sharing that scheduler.
+#[rustler::nif(schedule = "DirtyCpu")]
 fn classify_frame_nif(
     resource: ResourceArc<ModelResource>,
     jpeg_bytes: Binary,
@@ -61,23 +70,43 @@ fn classify_frame_nif(
     out_h: u32,
     radius: u32,
 ) -> Result<Vec<i64>, Atom> {
-    if out_w == 0 || out_h == 0 {
+    // Bounds checked in u64 (never overflows for any u32 input) before any
+    // work happens: final review (2026-09-28) found `(2*radius+1)^2*5+2`
+    // computed in u32/usize wraps for a large radius (e.g. release builds,
+    // which is what Nerves ships, have overflow checks off), so an
+    // unbounded radius could sail past the bit_length_mismatch check below
+    // and then loop `-radius..=radius` inside cell_bits for what is
+    // effectively forever, wedging the scheduler and eventually aborting
+    // the whole BEAM on allocation failure -- not catchable by
+    // catch_unwind, since an abort isn't a panic. MAX_RADIUS/MAX_DIM are
+    // generous over the deployed 32x24/radius=8 config.
+    const MAX_RADIUS: u32 = 64;
+    if out_w == 0
+        || out_h == 0
+        || out_w as usize > jpeg::MAX_DIM
+        || out_h as usize > jpeg::MAX_DIM
+        || radius > MAX_RADIUS
+    {
         return Err(atoms::invalid_dimensions());
+    }
+
+    let model = &resource.0;
+    // Depends only on radius and the model, not on the decoded frame --
+    // checked before decode so a mismatched radius fails fast without
+    // doing JPEG work first (same "fail before the expensive part" shape
+    // as the dimension check above).
+    let expected_len = (2u64 * radius as u64 + 1).pow(2) * 5 + 2;
+    // Compare the exact bit length against the model's own clause_size, not
+    // against chunks_size (chunks round up to 64-bit boundaries, so e.g.
+    // 7 bits and 47 bits both round to 1 chunk -- a chunks-only comparison
+    // cannot tell them apart).
+    if expected_len != model.clause_size as u64 {
+        return Err(atoms::bit_length_mismatch());
     }
 
     let decoded = jpeg::decode(jpeg_bytes.as_slice()).map_err(|_| atoms::invalid_jpeg())?;
     let resized = resize::resize_box(&decoded, out_w, out_h);
     let maps = features::compute_feature_maps(&resized);
-
-    let model = &resource.0;
-    let expected_len = ((2 * radius + 1) as usize).pow(2) * 5 + 2;
-    // Compare the exact bit length against the model's own clause_size, not
-    // against chunks_size (chunks round up to 64-bit boundaries, so e.g.
-    // 7 bits and 47 bits both round to 1 chunk -- a chunks-only comparison
-    // cannot tell them apart).
-    if expected_len != model.clause_size as usize {
-        return Err(atoms::bit_length_mismatch());
-    }
 
     let mut grid = Vec::with_capacity((out_w * out_h) as usize);
     for row in 0..out_h {

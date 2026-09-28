@@ -225,10 +225,37 @@ defmodule TsetlinRunnerTest do
                  {:error, :bit_length_mismatch}
       end)
     end
+
+    test "returns invalid_dimensions for an oversized radius, without decoding" do
+      with_tiny_7bit_model(fn model ->
+        # Final review (2026-09-28): (2*radius+1)^2*5+2 computed in u32
+        # wraps for a large radius, so an unchecked radius could sail past
+        # bit_length_mismatch and then loop ~2^64 times inside cell_bits.
+        # Garbage JPEG bytes here prove the check runs before any decode
+        # attempt (an :invalid_jpeg result would mean it decoded first).
+        assert TsetlinRunner.classify_frame(model, <<0, 1, 2, 3>>, 2, 2, 100_000) ==
+                 {:error, :invalid_dimensions}
+      end)
+    end
+
+    test "returns invalid_dimensions for an oversized out_w/out_h, without decoding" do
+      with_tiny_7bit_model(fn model ->
+        assert TsetlinRunner.classify_frame(model, <<0, 1, 2, 3>>, 100_000, 2, 0) ==
+                 {:error, :invalid_dimensions}
+      end)
+    end
   end
 
   describe "classify_frame/4 matches the Julia ground_tm pipeline" do
-    test "spot-checks known cells against the Julia-computed fixture" do
+    # Final review (2026-09-28): the original version of this test only
+    # spot-checked two cells and asserted `sky != grass` -- it never called
+    # the real `classify_frame/4` output against the Julia-computed labels
+    # this fixture already carries, so a bug specific to classify_frame_nif's
+    # own wiring (as opposed to the lower-level pipeline pieces the Rust
+    # parity test exercises directly) could ship undetected. Compare the
+    # full 768-cell grid instead -- the data was already being generated
+    # and checked in; comparing all of it costs nothing extra.
+    test "matches every one of the Julia-computed labels" do
       jpeg =
         File.read!(
           Path.join([__DIR__, "..", "native/tsetlin_nif/tests/fixtures/ground_tm_parity.jpg"])
@@ -237,18 +264,36 @@ defmodule TsetlinRunnerTest do
       model_path =
         Path.join([__DIR__, "..", "native/tsetlin_nif/tests/fixtures/ground_tm_parity.tmbin"])
 
+      expected_path =
+        Path.join([
+          __DIR__,
+          "..",
+          "native/tsetlin_nif/tests/fixtures/ground_tm_parity_expected.txt"
+        ])
+
       {:ok, model} = TsetlinRunner.load(model_path)
 
-      assert {:ok, grid} = TsetlinRunner.classify_frame(model, jpeg, 32, 24, 8)
-      assert length(grid) == 32 * 24
+      [header | rows] = expected_path |> File.read!() |> String.split("\n", trim: true)
+      [out_w, out_h, radius] = header |> String.split(" ") |> Enum.map(&String.to_integer/1)
 
-      # Spot-check a cell well inside the sky region (row 2 of 24, far from
-      # the boundary) and one well inside the grass region (row 20 of 24).
-      sky_idx = 2 * 32 + 16
-      grass_idx = 20 * 32 + 16
-      assert Enum.at(grid, sky_idx) in [1, 2]
-      assert Enum.at(grid, grass_idx) in [1, 2]
-      assert Enum.at(grid, sky_idx) != Enum.at(grid, grass_idx)
+      expected =
+        Map.new(rows, fn row ->
+          [col, row_idx, label] = row |> String.split(" ") |> Enum.map(&String.to_integer/1)
+          {{col, row_idx}, label}
+        end)
+
+      assert {:ok, grid} = TsetlinRunner.classify_frame(model, jpeg, out_w, out_h, radius)
+      assert length(grid) == out_w * out_h
+
+      mismatches =
+        for row <- 0..(out_h - 1), col <- 0..(out_w - 1) do
+          actual = Enum.at(grid, row * out_w + col)
+          expected_label = Map.fetch!(expected, {col, row})
+          if actual != expected_label, do: {col, row, expected_label, actual}
+        end
+        |> Enum.reject(&is_nil/1)
+
+      assert mismatches == []
     end
   end
 end

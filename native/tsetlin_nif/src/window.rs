@@ -23,8 +23,11 @@ pub fn cell_bits(maps: &FeatureMaps, col: u32, row: u32, radius: u32) -> Vec<boo
         }
     }
 
-    bits.push((row as f32) > 0.65 * maps.height as f32);
-    bits.push((row as f32) > 0.80 * maps.height as f32);
+    // Julia's ground_features runs `for row in 1:out_h` (1-indexed); this
+    // `row` is 0-indexed, so the Julia-equivalent row number is `row + 1`.
+    let julia_row = (row + 1) as f32;
+    bits.push(julia_row > 0.65 * maps.height as f32);
+    bits.push(julia_row > 0.80 * maps.height as f32);
     bits
 }
 
@@ -102,6 +105,27 @@ mod tests {
             }
             let base = g * 5;
             assert!(!bits[base], "group {g} should not see the hot pixel");
+        }
+    }
+
+    #[test]
+    fn position_bits_use_1_indexed_row_matching_julia() {
+        // GroundTM.jl's ground_features runs `for row in 1:out_h` (1-indexed)
+        // and computes `bits[end-1] = r > 0.65*H`, `bits[end] = r > 0.80*H`.
+        // cell_bits's `row` parameter is 0-indexed, so the Julia-equivalent
+        // row number is `row + 1` -- final review (2026-09-28) found the
+        // implementation compared the raw 0-indexed `row` instead, shifting
+        // both thresholds down by one row (a ~4% near-field boundary error
+        // on the deployed 24-row grid, affecting 64 of 768 cells/frame).
+        let h = 24u32;
+        let maps = flat_maps(4, h);
+        for row in 0..h {
+            let bits = cell_bits(&maps, 0, row, 0);
+            let julia_row = (row + 1) as f32;
+            let expected_65 = julia_row > 0.65 * h as f32;
+            let expected_80 = julia_row > 0.80 * h as f32;
+            assert_eq!(bits[5], expected_65, "row={row}: 0.65 threshold");
+            assert_eq!(bits[6], expected_80, "row={row}: 0.80 threshold");
         }
     }
 

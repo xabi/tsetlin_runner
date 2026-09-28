@@ -100,6 +100,35 @@ mod tests {
     }
 
     #[test]
+    fn edge_threshold_is_pinned_at_0_15() {
+        // Final review (2026-09-28): nothing asserted on `edge` at a
+        // magnitude close to EDGE_THRESHOLD -- e.g. mutating 0.15 to 1.5
+        // left the whole suite green. A single nonzero pixel at the
+        // bottom-right corner of the SOBEL_W window (kernel weight +1)
+        // makes the center pixel's Sobel-W magnitude exactly that pixel's
+        // luminance value, so 0.2 (> 0.15) and 0.1 (< 0.15) pin both sides.
+        let above = {
+            let mut data = vec![0.0f32; 3 * 3 * 3];
+            let idx = 3 * ((2 * 3 + 2) as usize); // (row=2, col=2)
+            data[idx] = 0.2;
+            data[idx + 1] = 0.2;
+            data[idx + 2] = 0.2;
+            compute_feature_maps(&img(3, 3, data))
+        };
+        let below = {
+            let mut data = vec![0.0f32; 3 * 3 * 3];
+            let idx = 3 * ((2 * 3 + 2) as usize);
+            data[idx] = 0.1;
+            data[idx + 1] = 0.1;
+            data[idx + 2] = 0.1;
+            compute_feature_maps(&img(3, 3, data))
+        };
+        let center = (1 * 3 + 1) as usize;
+        assert!(above.edge[center], "0.2 > 0.15 should be an edge");
+        assert!(!below.edge[center], "0.1 < 0.15 should not be an edge");
+    }
+
+    #[test]
     fn sobel_w_and_sobel_h_are_not_transposed() {
         // tsetlin_world's img/Y arrays are indexed [w, h] (dim1=column,
         // dim2=row) -- Julia's `_SOBEL_W`/`_SOBEL_H` literals are matrices
