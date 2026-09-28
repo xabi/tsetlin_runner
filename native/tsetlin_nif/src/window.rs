@@ -23,11 +23,12 @@ pub fn cell_bits(maps: &FeatureMaps, col: u32, row: u32, radius: u32) -> Vec<boo
         }
     }
 
-    // Julia's ground_features runs `for row in 1:out_h` (1-indexed); this
-    // `row` is 0-indexed, so the Julia-equivalent row number is `row + 1`.
-    let julia_row = (row + 1) as f32;
-    bits.push(julia_row > 0.65 * maps.height as f32);
-    bits.push(julia_row > 0.80 * maps.height as f32);
+    // Julia's ground_features runs `for row in 1:out_h` (1-indexed) and
+    // compares in Float64. f32 rounds some `0.65 * H` products down onto the
+    // next-lower integer (first at H=180), which flips a whole row.
+    let julia_row = (row + 1) as f64;
+    bits.push(julia_row > 0.65 * maps.height as f64);
+    bits.push(julia_row > 0.80 * maps.height as f64);
     bits
 }
 
@@ -121,12 +122,24 @@ mod tests {
         let maps = flat_maps(4, h);
         for row in 0..h {
             let bits = cell_bits(&maps, 0, row, 0);
-            let julia_row = (row + 1) as f32;
-            let expected_65 = julia_row > 0.65 * h as f32;
-            let expected_80 = julia_row > 0.80 * h as f32;
+            let julia_row = (row + 1) as f64;
+            let expected_65 = julia_row > 0.65 * h as f64;
+            let expected_80 = julia_row > 0.80 * h as f64;
             assert_eq!(bits[5], expected_65, "row={row}: 0.65 threshold");
             assert_eq!(bits[6], expected_80, "row={row}: 0.80 threshold");
         }
+    }
+
+    #[test]
+    fn position_bit_0_65_matches_julia_f64_at_height_180() {
+        // 0.65 * 180 is 117.0 in Float64 (Julia) and 116.999992 in f32.
+        // Row 116 is Julia's r=117: `117 > 117.0` is false, so the bit must
+        // stay off. The next row (r=118) is on. An f32 multiply flips row 116.
+        let maps = flat_maps(1, 180);
+        let at_threshold = cell_bits(&maps, 0, 116, 0);
+        let past_threshold = cell_bits(&maps, 0, 117, 0);
+        assert!(!at_threshold[5], "row 116 (Julia r=117) is not past 0.65*H");
+        assert!(past_threshold[5], "row 117 (Julia r=118) is past 0.65*H");
     }
 
     #[test]
