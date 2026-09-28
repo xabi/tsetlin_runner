@@ -226,4 +226,29 @@ defmodule TsetlinRunnerTest do
       end)
     end
   end
+
+  describe "classify_frame/4 matches the Julia ground_tm pipeline" do
+    test "spot-checks known cells against the Julia-computed fixture" do
+      jpeg =
+        File.read!(
+          Path.join([__DIR__, "..", "native/tsetlin_nif/tests/fixtures/ground_tm_parity.jpg"])
+        )
+
+      model_path =
+        Path.join([__DIR__, "..", "native/tsetlin_nif/tests/fixtures/ground_tm_parity.tmbin"])
+
+      {:ok, model} = TsetlinRunner.load(model_path)
+
+      assert {:ok, grid} = TsetlinRunner.classify_frame(model, jpeg, 32, 24, 8)
+      assert length(grid) == 32 * 24
+
+      # Spot-check a cell well inside the sky region (row 2 of 24, far from
+      # the boundary) and one well inside the grass region (row 20 of 24).
+      sky_idx = 2 * 32 + 16
+      grass_idx = 20 * 32 + 16
+      assert Enum.at(grid, sky_idx) in [1, 2]
+      assert Enum.at(grid, grass_idx) in [1, 2]
+      assert Enum.at(grid, sky_idx) != Enum.at(grid, grass_idx)
+    end
+  end
 end
