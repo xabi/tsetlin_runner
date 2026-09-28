@@ -121,7 +121,7 @@ mod tests {
         }
         let img_data: Vec<f32> = luminance.iter().flat_map(|&y| [y, y, y]).collect();
         let src = img(w, w, img_data);
-        let maps = compute_feature_maps(&src);
+        let _maps = compute_feature_maps(&src);
 
         // Rust is 0-indexed; Julia's Y[3,3] (1-indexed, center of a 5x5) is
         // this test's (col=2, row=2).

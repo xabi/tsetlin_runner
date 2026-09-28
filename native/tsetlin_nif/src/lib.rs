@@ -3,6 +3,7 @@ pub mod features;
 pub mod jpeg;
 pub mod resize;
 pub mod tsetlin;
+pub mod window;
 
 use rustler::{Atom, Binary, Env, ResourceArc, Term};
 
