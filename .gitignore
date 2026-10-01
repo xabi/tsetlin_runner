@@ -24,3 +24,4 @@ native/*/target/
 
 # SDD workspace (subagent-driven-development scratch, per-plan)
 /.superpowers/
+.mcp.json
