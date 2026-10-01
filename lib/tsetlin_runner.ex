@@ -79,4 +79,49 @@ defmodule TsetlinRunner do
              is_integer(radius) and radius >= 0 do
     Native.classify_frame_nif(model, jpeg, out_w, out_h, radius)
   end
+
+  @doc """
+  The input bit length (`clause_size`) `model` was compiled with -- the same
+  field `classify_frame/5` already validates its own `radius` argument
+  against internally (returning `{:error, :bit_length_mismatch}` on a
+  mismatch). Exposed so a caller can derive the right `radius` for a loaded
+  model up front via `radius_for_clause_size/1`, instead of hardcoding one
+  and risking it drifting out of sync with whatever the model was actually
+  trained with.
+  """
+  @spec clause_size(reference()) :: non_neg_integer()
+  def clause_size(model) when is_reference(model), do: Native.clause_size_nif(model)
+
+  @doc """
+  Inverts `ground_feature_len(radius) = (2*radius+1)^2 * 5 + 2`
+  (`tsetlin_world/src/GroundTM.jl`) -- the GroundTM feature encoding this
+  library's `classify_frame/5` replicates. Returns `{:ok, radius}` for a
+  `clause_size` that is an exact match for some non-negative integer
+  radius, `:error` otherwise (not a GroundTM-shaped model, or a corrupt/
+  unrelated `.tmbin`).
+  """
+  @spec radius_for_clause_size(non_neg_integer()) :: {:ok, non_neg_integer()} | :error
+  def radius_for_clause_size(clause_size) when is_integer(clause_size) and clause_size >= 2 do
+    # (2r+1)^2 = (clause_size - 2) / 5
+    with 0 <- rem(clause_size - 2, 5),
+         square when square >= 1 <- div(clause_size - 2, 5),
+         root <- isqrt(square),
+         true <- root * root == square,
+         0 <- rem(root - 1, 2) do
+      {:ok, div(root - 1, 2)}
+    else
+      _ -> :error
+    end
+  end
+
+  def radius_for_clause_size(_clause_size), do: :error
+
+  defp isqrt(n) when is_integer(n) and n >= 0, do: n |> :math.sqrt() |> round() |> newton_fix(n)
+
+  # :math.sqrt/1's float round-trip can be off by one for large perfect
+  # squares -- nudge to the exact integer root before the caller's
+  # root*root == square check, rather than trusting the float directly.
+  defp newton_fix(guess, n) when guess * guess > n, do: newton_fix(guess - 1, n)
+  defp newton_fix(guess, n) when (guess + 1) * (guess + 1) <= n, do: newton_fix(guess + 1, n)
+  defp newton_fix(guess, _n), do: guess
 end

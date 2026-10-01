@@ -119,6 +119,17 @@ fn classify_frame_nif(
     Ok(grid)
 }
 
+// Lets a caller recover the radius a model was trained with
+// (ground_feature_len(radius) == clause_size, invertible) instead of
+// hardcoding it and risking exactly the drift class of bug this function
+// exists to prevent: classify_frame_nif already validates its own radius
+// argument against this same field, but nothing let a caller read it back
+// out ahead of time to pick the right radius in the first place.
+#[rustler::nif]
+fn clause_size_nif(resource: ResourceArc<ModelResource>) -> u32 {
+    resource.0.clause_size
+}
+
 #[rustler::resource_impl]
 impl rustler::Resource for ModelResource {}
 

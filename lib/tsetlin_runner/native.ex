@@ -9,4 +9,6 @@ defmodule TsetlinRunner.Native do
 
   def classify_frame_nif(_resource, _jpeg, _out_w, _out_h, _radius),
     do: :erlang.nif_error(:nif_not_loaded)
+
+  def clause_size_nif(_resource), do: :erlang.nif_error(:nif_not_loaded)
 end

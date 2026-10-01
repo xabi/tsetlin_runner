@@ -1,6 +1,30 @@
 defmodule TsetlinRunnerTest do
   use ExUnit.Case, async: true
 
+  describe "radius_for_clause_size/1" do
+    test "inverts ground_feature_len for known radii" do
+      # (2r+1)^2 * 5 + 2, tsetlin_world/src/GroundTM.jl's ground_feature_len/1
+      assert TsetlinRunner.radius_for_clause_size(47) == {:ok, 1}
+      assert TsetlinRunner.radius_for_clause_size(407) == {:ok, 4}
+      assert TsetlinRunner.radius_for_clause_size(1447) == {:ok, 8}
+      assert TsetlinRunner.radius_for_clause_size(7) == {:ok, 0}
+    end
+
+    test "returns :error for a clause_size that isn't a GroundTM radius encoding" do
+      assert TsetlinRunner.radius_for_clause_size(2) == :error
+      assert TsetlinRunner.radius_for_clause_size(48) == :error
+      assert TsetlinRunner.radius_for_clause_size(0) == :error
+      assert TsetlinRunner.radius_for_clause_size(1) == :error
+    end
+
+    test "round-trips every radius from 0 to 32" do
+      for r <- 0..32 do
+        clause_size = (2 * r + 1) * (2 * r + 1) * 5 + 2
+        assert TsetlinRunner.radius_for_clause_size(clause_size) == {:ok, r}
+      end
+    end
+  end
+
   describe "pack_bits/1" do
     test "packs an empty list into an empty binary" do
       assert TsetlinRunner.pack_bits([]) == <<>>
@@ -95,6 +119,12 @@ defmodule TsetlinRunnerTest do
       with_tiny_model(fn model ->
         assert TsetlinRunner.predict(model, TsetlinRunner.pack_bits([true, false])) == {:ok, 1}
         assert TsetlinRunner.predict(model, TsetlinRunner.pack_bits([false, true])) == {:ok, 1}
+      end)
+    end
+
+    test "clause_size/1 returns the input bit length the model was trained with" do
+      with_tiny_model(fn model ->
+        assert TsetlinRunner.clause_size(model) == 2
       end)
     end
 

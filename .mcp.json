@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "devenv": {
+      "type": "stdio",
+      "command": "devenv",
+      "args": [
+        "mcp"
+      ],
+      "env": {}
+    }
+  }
+}
